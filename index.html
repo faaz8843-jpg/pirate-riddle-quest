@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Pirate Riddle Quest</title>
+
+<style>
+body{
+  margin:0;
+  background:#0b1f2a;
+  color:#ffd700;
+  font-family:Trebuchet MS, Arial;
+  text-align:center;
+}
+
+h1{margin:10px}
+
+#timer{
+  font-size:22px;
+  margin:10px;
+  color:#00ffcc;
+}
+
+/* ===== CARD GRID ===== */
+#cards{
+  display:grid;
+  grid-template-columns:repeat(5,120px);
+  gap:18px;
+  justify-content:center;
+  margin-top:20px;
+  perspective:1000px;
+}
+
+/* ===== 3D CARD ===== */
+.card{
+  width:120px;
+  height:160px;
+  position:relative;
+  transform-style:preserve-3d;
+  transition:transform 0.7s;
+  cursor:pointer;
+}
+
+.card.flip{
+  transform:rotateY(180deg);
+}
+
+.face{
+  position:absolute;
+  width:100%;
+  height:100%;
+  backface-visibility:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:26px;
+  border:2px solid gold;
+  border-radius:8px;
+}
+
+.front{ background:#3b1f0f; }
+.back{
+  background:#1a0d05;
+  transform:rotateY(180deg);
+}
+
+/* ===== QUESTION PANEL ===== */
+#panel{
+  margin-top:20px;
+  display:none;
+}
+
+input{
+  padding:8px;
+  width:260px;
+}
+
+button{
+  padding:8px 15px;
+  margin-top:10px;
+  background:gold;
+  border:none;
+  cursor:pointer;
+  font-weight:bold;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🏴‍☠️ Pirate Riddle Quest</h1>
+<p>Flip 1 of 10 cards • Answer quickly • Endless adventure</p>
+
+<div id="timer">⏱ Time Left: 60s</div>
+
+<div id="cards"></div>
+
+<div id="panel">
+  <h3 id="riddleText"></h3>
+  <p><b>Hint:</b> <span id="hintText"></span></p>
+  <input id="answer" placeholder="Your answer">
+  <br>
+  <button onclick="checkAnswer()">Submit</button>
+  <p id="result"></p>
+</div>
+
+<script>
+/* ================= AUDIO SYSTEM ================= */
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playTone(freq, duration){
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.frequency.value = freq;
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  gain.gain.value = 0.25;
+  osc.start();
+  gain.gain.exponentialRampToValueAtTime(
+    0.001, audioCtx.currentTime + duration
+  );
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+// Ambient background sound
+setInterval(()=>playTone(110,0.25),4000);
+
+// Victory & lose sounds
+function victory(){ playTone(650,1); }
+function lose(){ playTone(180,1); }
+
+document.addEventListener("click",()=>audioCtx.resume(),{once:true});
+
+/* ================= 50 EASY QUESTIONS ================= */
+const riddles = [
+ {q:"Who sails a ship?", a:"pirate", h:"Not a sailor"},
+ {q:"What do pirates look for?", a:"treasure", h:"Gold"},
+ {q:"Where do pirates sail?", a:"sea", h:"Big water"},
+ {q:"What do pirates wear on one eye?", a:"patch", h:"Eye"},
+ {q:"What animal sits on pirate shoulders?", a:"parrot", h:"Bird"},
+ {q:"What do pirates say?", a:"ahoy", h:"Greeting"},
+ {q:"Where is treasure kept?", a:"chest", h:"Box"},
+ {q:"What helps pirates find treasure?", a:"map", h:"Paper"},
+ {q:"What weapon do pirates use?", a:"sword", h:"Sharp"},
+ {q:"What do pirates drink?", a:"rum", h:"Drink"},
+
+ {q:"What color is gold?", a:"yellow", h:"Shiny"},
+ {q:"What moves a ship?", a:"wind", h:"Air"},
+ {q:"What covers most of earth?", a:"water", h:"Ocean"},
+ {q:"What do pirates dig?", a:"ground", h:"Earth"},
+ {q:"What floats on water?", a:"boat", h:"Ship"},
+ {q:"What do pirates steal?", a:"gold", h:"Shiny"},
+ {q:"What do pirates wear on head?", a:"hat", h:"Cap"},
+ {q:"What do pirates use to see far?", a:"telescope", h:"Lens"},
+ {q:"What shines at night?", a:"moon", h:"Sky"},
+ {q:"What burns on ships at night?", a:"lamp", h:"Light"},
+
+ {q:"What animal lives in sea?", a:"fish", h:"Swims"},
+ {q:"What pirate sound is famous?", a:"arr", h:"Sound"},
+ {q:"What do pirates bury?", a:"treasure", h:"Hidden"},
+ {q:"What do pirates sail on?", a:"ship", h:"Boat"},
+ {q:"What is pirate flag color?", a:"black", h:"Dark"},
+ {q:"What symbol is on pirate flag?", a:"skull", h:"Bones"},
+ {q:"What do pirates open with keys?", a:"chest", h:"Box"},
+ {q:"What do pirates wear on feet?", a:"boots", h:"Shoes"},
+ {q:"What do pirates use to climb?", a:"rope", h:"String"},
+ {q:"What do pirates sail across?", a:"ocean", h:"Big water"},
+
+ {q:"What do pirates shout to attack?", a:"attack", h:"Fight"},
+ {q:"What do pirates follow?", a:"map", h:"Directions"},
+ {q:"What do pirates live on?", a:"ship", h:"Boat"},
+ {q:"What do pirates need to sail?", a:"wind", h:"Air"},
+ {q:"What do pirates carry gold in?", a:"chest", h:"Box"},
+ {q:"What tool shows direction?", a:"compass", h:"North"},
+ {q:"What keeps ships moving?", a:"wind", h:"Air"},
+ {q:"What pirate wears on hand?", a:"hook", h:"Metal"},
+ {q:"What do pirates explore?", a:"islands", h:"Land"},
+ {q:"What do pirates search for?", a:"treasure", h:"Gold"}
+];
+
+let activeRiddles = [];
+let currentRiddle = null;
+
+/* ================= TIMER ================= */
+let timeLeft = 60;
+let timerInterval = null;
+
+function startTimer(){
+  clearInterval(timerInterval);
+  timeLeft = 60;
+  document.getElementById("timer").innerText = "⏱ Time Left: 60s";
+
+  timerInterval = setInterval(()=>{
+    timeLeft--;
+    document.getElementById("timer").innerText =
+      "⏱ Time Left: " + timeLeft + "s";
+
+    if(timeLeft <= 0){
+      clearInterval(timerInterval);
+      lose();
+      document.getElementById("result").innerText =
+        "☠️ Time up! Answer was: " + currentRiddle.a;
+      setTimeout(createCards,1500);
+    }
+  },1000);
+}
+
+/* ================= SHUFFLE ================= */
+function shuffle(arr){
+  return arr.sort(()=>Math.random()-0.5);
+}
+
+/* ================= CREATE CARDS ================= */
+function createCards(){
+  document.getElementById("panel").style.display="none";
+  document.getElementById("cards").innerHTML="";
+  activeRiddles = shuffle([...riddles]).slice(0,10);
+
+  activeRiddles.forEach((r,i)=>{
+    const card = document.createElement("div");
+    card.className="card";
+    card.innerHTML = `
+      <div class="face front">❓</div>
+      <div class="face back">🗝️</div>
+    `;
+    card.onclick=()=>{
+      document.querySelectorAll(".card")
+        .forEach(c=>c.classList.remove("flip"));
+      card.classList.add("flip");
+      openCard(i);
+    };
+    document.getElementById("cards").appendChild(card);
+  });
+
+  startTimer();
+}
+
+/* ================= OPEN CARD ================= */
+function openCard(i){
+  currentRiddle = activeRiddles[i];
+  document.getElementById("panel").style.display="block";
+  document.getElementById("riddleText").innerText=currentRiddle.q;
+  document.getElementById("hintText").innerText=currentRiddle.h;
+  document.getElementById("result").innerText="";
+  document.getElementById("answer").value="";
+}
+
+/* ================= CHECK ANSWER ================= */
+function checkAnswer(){
+  const ans = document.getElementById("answer")
+    .value.toLowerCase().trim();
+
+  clearInterval(timerInterval);
+
+  if(ans === currentRiddle.a){
+    document.getElementById("result").innerText =
+      "💰 Correct! New round starting...";
+    victory();
+    setTimeout(createCards,1500);
+  }else{
+    document.getElementById("result").innerText =
+      "☠️ Wrong! Correct answer: " + currentRiddle.a;
+    lose();
+    setTimeout(createCards,1500);
+  }
+}
+
+/* ================= START GAME ================= */
+createCards();
+</script>
+
+</body>
+</html>
